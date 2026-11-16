@@ -1,0 +1,14 @@
+matrix: example
+      A   B   C   D   E   T
+  A   0   5   8   7   7   0
+  B   0   0   1   0   3   8
+  C   6   1   0   1   0   6
+  D   5   7   0   0   4   5
+  E   4   4   0   2   0   6
+
+seed 0: 165 → 45 (72.7% lower if positive), min 42 at gen 363, moves 40, steps down/up/flat 10/1/49, last-10-cycles span 0
+seed 1: 243 → 38 (84.4% lower if positive), min 38 at gen 1089, moves 118, steps down/up/flat 22/10/28, last-10-cycles span 0
+seed 2: 304 → 52 (82.9% lower if positive), min 52 at gen 561, moves 67, steps down/up/flat 17/0/43, last-10-cycles span 0
+seed 3: 223 → 39 (82.5% lower if positive), min 39 at gen 396, moves 51, steps down/up/flat 12/0/48, last-10-cycles span 0
+seed 4: 181 → 48 (73.5% lower if positive), min 48 at gen 297, moves 39, steps down/up/flat 9/0/51, last-10-cycles span 0
+mean initial 223.20 → mean final 44.40
