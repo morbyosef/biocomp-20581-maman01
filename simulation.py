@@ -50,6 +50,13 @@ from constants import (
 )
 from matrices import MATRICES, MATRIX_TITLES, format_matrix, validate_matrix
 
+# שני הסרטונים של הריצה המלאה: מטריצה, זרע, ושם הקובץ.
+VIDEO_RUNS = (
+    ("example", 3, "party_example.mp4"),
+    ("interesting", 0, "party_interesting.mp4"),
+)
+VIDEO_DIR_NAME = "videos"
+
 
 class RunResult:
     """תוצאת ריצה אחת: סדרות שהמוניטור שמר, לא מצב פנימי של הכלל."""
@@ -476,6 +483,25 @@ def run_matrix(
     return stats
 
 
+def render_videos(output_root: Path, generations: int = DEFAULT_GENERATIONS) -> None:
+    """מריץ את שתי הריצות המצולמות וכותב MP4 תחת output/videos."""
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import viz
+
+    folder = output_root / VIDEO_DIR_NAME
+    folder.mkdir(parents=True, exist_ok=True)
+    for matrix_name, seed, filename in VIDEO_RUNS:
+        preferences = MATRICES[matrix_name]
+        print(f"Running {matrix_name} seed {seed} for {generations} generations")
+        result = run_simulation(preferences, seed=seed, generations=generations)
+        initial = int(result.stress[0])
+        final = int(result.stress[-1])
+        print(f"  stress {initial} → {final}, moves {result.move_count}")
+        viz.save_run_video(folder / filename, result.positions, result.stress, MATRIX_TITLES[matrix_name])
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the party cellular automaton")
     parser.add_argument(
@@ -488,6 +514,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--generations", type=int, default=DEFAULT_GENERATIONS)
     parser.add_argument("--output", default=OUTPUT_DIR)
     parser.add_argument("--no-figures", action="store_true", help="Write numbers only, skip images.")
+    parser.add_argument(
+        "--videos",
+        action="store_true",
+        help="Render party_example.mp4 and party_interesting.mp4, and skip the snapshot bundle.",
+    )
     return parser.parse_args(argv)
 
 
@@ -497,6 +528,9 @@ def main(argv: list[str] | None = None) -> None:
     seeds = tuple(args.seeds) if args.seeds is not None else DEFAULT_SEEDS
     output_root = Path(args.output)
     output_root.mkdir(parents=True, exist_ok=True)
+    if args.videos:
+        render_videos(output_root, args.generations)
+        return
     if not args.no_figures:
         import matplotlib
 

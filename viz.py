@@ -5,11 +5,14 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import numpy as np
 
 from constants import (
+    CYCLE_LENGTH,
+    EMPTY,
     ENTITY_COUNT,
     ENTITY_NAMES,
     GRID_SIZE,
@@ -52,6 +55,20 @@ STORY_GENERATIONS = (0, 100, 200, 400, 800, 1200, 2000)
 QUALITY_ZOOM_GENERATIONS = 400
 HEBREW_FONT = "/usr/share/fonts/truetype/noto/NotoSerifHebrew-Regular.ttf"
 SEED_LINE_COLORS = ("#0072B2", "#E69F00", "#009E73", "#CC79A7", "#56B4E9")
+VIDEO_FPS = 10
+VIDEO_TARGET_SECONDS = 45
+VIDEO_MIN_SECONDS = 30
+VIDEO_MAX_SECONDS = 60
+VIDEO_WIDTH_PX = 1280
+VIDEO_HEIGHT_PX = 720
+VIDEO_DPI = 100
+VIDEO_CRF = 18
+STRESS_CURVE_COLOR = "#0072B2"
+STRESS_MARKER_COLOR = "#D55E00"
+VIDEO_CURVE_FACE = "#FFFCF7"
+VIDEO_Y_HEADROOM = 1.08
+VIDEO_PARTY_WIDTH_RATIO = 1.05
+VIDEO_CURVE_WIDTH_RATIO = 0.95
 
 _CONFIGURED = False
 
@@ -80,7 +97,17 @@ def _finish(fig, path: Path) -> None:
     _pyplot().close(fig)
 
 
-def draw_party(ax, occupant: np.ndarray, generation: int, stress: int, initial_stress: int, title: str) -> None:
+def draw_party(
+    ax,
+    occupant: np.ndarray,
+    generation: int,
+    stress: int,
+    initial_stress: int,
+    title: str,
+    *,
+    with_heading: bool = True,
+    with_legend: bool = True,
+) -> None:
     """מצייר את החדר: שולחן, אורחים, ורשת. לא נוגע בכללים."""
     ax.set_xlim(-0.5, GRID_SIZE - 0.5)
     ax.set_ylim(GRID_SIZE - 0.5, -0.5)
@@ -129,17 +156,19 @@ def draw_party(ax, occupant: np.ndarray, generation: int, stress: int, initial_s
             _label(ax, col, row, name, "white")
 
     change = stress - initial_stress
-    ax.set_title(
-        f"{title}\ngeneration {generation}    stress {stress}    (start {initial_stress}, {change:+d})",
-        fontsize=11,
-    )
-    ax.legend(
-        loc="upper center",
-        bbox_to_anchor=(0.5, -0.08),
-        ncol=6,
-        frameon=False,
-        fontsize=8,
-    )
+    if with_heading:
+        ax.set_title(
+            f"{title}\ngeneration {generation}    stress {stress}    (start {initial_stress}, {change:+d})",
+            fontsize=11,
+        )
+    if with_legend:
+        ax.legend(
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.08),
+            ncol=6,
+            frameon=False,
+            fontsize=8,
+        )
 
 
 def _label(ax, col, row, text: str, color: str) -> None:
@@ -435,3 +464,149 @@ def save_rule_diagram(path) -> None:
         ax.text(50, 23.2, "חוזרים לחישה", ha="center", va="center", fontsize=10, color="#5c5146", fontproperties=font_properties)
     fig.tight_layout()
     _finish(fig, Path(path))
+
+
+def video_frame_generations(last_generation: int) -> list[int]:
+    """דורות שמצוירים בסרטון.
+
+    תזוזה יכולה לקרות רק בכפולה של אורך המחזור, וכל דור כזה נשמר.
+    דורות ביניים נוספים כדי שמונה הדור ועקומת הלחץ יעברו את כל הריצה,
+    והאורך יישאר בין VIDEO_MIN_SECONDS ל־VIDEO_MAX_SECONDS בקצב VIDEO_FPS.
+    """
+    if last_generation < 1:
+        raise ValueError("last_generation must be positive")
+    target_frames = VIDEO_FPS * VIDEO_TARGET_SECONDS
+    stride = max(1, int(round(last_generation / target_frames)))
+    while True:
+        chosen = set(range(0, last_generation + 1, stride))
+        chosen.add(last_generation)
+        chosen.update(range(0, last_generation + 1, CYCLE_LENGTH))
+        frames = sorted(chosen)
+        duration = len(frames) / VIDEO_FPS
+        if duration > VIDEO_MAX_SECONDS and stride < last_generation:
+            stride += 1
+            continue
+        if duration < VIDEO_MIN_SECONDS and stride > 1:
+            stride -= 1
+            continue
+        return frames
+
+
+def _occupant_from_positions(guest_positions: np.ndarray) -> np.ndarray:
+    occupant = np.full((GRID_SIZE, GRID_SIZE), EMPTY, dtype=np.int16)
+    occupant[TABLE_ROW, TABLE_COL] = TABLE
+    for guest, occupant_id in enumerate(GUEST_OCCUPANTS):
+        row = int(guest_positions[guest, 0])
+        col = int(guest_positions[guest, 1])
+        occupant[row, col] = occupant_id
+    return occupant
+
+
+def _draw_video_frame(fig, party, curve, positions, stress, generation: int, title: str) -> None:
+    initial = int(stress[0])
+    current = int(stress[generation])
+    party.clear()
+    curve.clear()
+    draw_party(
+        party,
+        _occupant_from_positions(positions[generation]),
+        generation,
+        current,
+        initial,
+        title,
+        with_heading=False,
+        with_legend=False,
+    )
+    fig.suptitle(
+        f"{title}     generation {generation}     stress {current}",
+        fontsize=18,
+        color="#2a241c",
+    )
+    shown = np.arange(generation + 1)
+    curve.set_facecolor(VIDEO_CURVE_FACE)
+    curve.plot(shown, stress[: generation + 1], color=STRESS_CURVE_COLOR, linewidth=1.8)
+    curve.scatter([generation], [current], s=42, color=STRESS_MARKER_COLOR, zorder=3)
+    curve.set_xlim(0, max(generation, 1))
+    curve.set_ylim(0, max(int(stress.max()), 1) * VIDEO_Y_HEADROOM)
+    curve.set_xlabel("generation")
+    curve.set_ylabel("stress  |actual − desired|")
+    curve.set_title(f"stress {initial} → {current}", fontsize=12, color="#2a241c")
+    curve.grid(True, color=GRID_LINE_COLOR, linewidth=0.6)
+    curve.tick_params(labelsize=9)
+
+
+def save_run_video(path, positions: np.ndarray, stress: np.ndarray, title: str) -> None:
+    """כותב MP4 של הריצה: H.264, yuv420p, רוחב VIDEO_WIDTH_PX, קצב VIDEO_FPS."""
+    plt = _pyplot()
+    last_generation = len(stress) - 1
+    if len(positions) != len(stress):
+        raise ValueError("positions and stress must cover the same generations")
+    frames = video_frame_generations(last_generation)
+    fig = plt.figure(figsize=(VIDEO_WIDTH_PX / VIDEO_DPI, VIDEO_HEIGHT_PX / VIDEO_DPI), dpi=VIDEO_DPI)
+    fig.patch.set_facecolor(FIGURE_FACE)
+    grid = fig.add_gridspec(
+        1,
+        2,
+        width_ratios=(VIDEO_PARTY_WIDTH_RATIO, VIDEO_CURVE_WIDTH_RATIO),
+        left=0.05,
+        right=0.975,
+        top=0.84,
+        bottom=0.09,
+        wspace=0.22,
+    )
+    party = fig.add_subplot(grid[0])
+    curve = fig.add_subplot(grid[1])
+
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    encoder = subprocess.Popen(
+        [
+            "ffmpeg",
+            "-y",
+            "-loglevel",
+            "error",
+            "-f",
+            "rawvideo",
+            "-vcodec",
+            "rawvideo",
+            "-s",
+            f"{VIDEO_WIDTH_PX}x{VIDEO_HEIGHT_PX}",
+            "-pix_fmt",
+            "rgb24",
+            "-r",
+            str(VIDEO_FPS),
+            "-i",
+            "-",
+            "-an",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-crf",
+            str(VIDEO_CRF),
+            "-movflags",
+            "+faststart",
+            str(path),
+        ],
+        stdin=subprocess.PIPE,
+    )
+    try:
+        for index, generation in enumerate(frames):
+            _draw_video_frame(fig, party, curve, positions, stress, generation, title)
+            fig.canvas.draw()
+            width, height = fig.canvas.get_width_height()
+            if (width, height) != (VIDEO_WIDTH_PX, VIDEO_HEIGHT_PX):
+                raise RuntimeError(f"frame is {width}x{height}, expected {VIDEO_WIDTH_PX}x{VIDEO_HEIGHT_PX}")
+            raw = np.ascontiguousarray(np.asarray(fig.canvas.buffer_rgba())[:, :, :3])
+            encoder.stdin.write(raw.tobytes())
+            if index % 50 == 0:
+                print(f"  {title}: frame {index + 1}/{len(frames)} (generation {generation})", flush=True)
+    finally:
+        if encoder.stdin is not None:
+            encoder.stdin.close()
+        return_code = encoder.wait()
+        plt.close(fig)
+    if return_code != 0:
+        raise RuntimeError(f"ffmpeg exited with {return_code} while writing {path}")
+    duration = len(frames) / VIDEO_FPS
+    print(f"Wrote {path} ({len(frames)} frames, {duration:.1f}s at {VIDEO_FPS} fps)")

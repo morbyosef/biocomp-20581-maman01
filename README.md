@@ -41,8 +41,13 @@ python3 gui.py --matrix interesting --seed 0
 ```bash
 python3 simulation.py --matrix example --seeds 0 1 --generations 400
 python3 simulation.py --no-figures
+python3 simulation.py --videos
 python3 gui.py --matrix example --seed 1 --stride 3 --interval 30
 ```
+
+`--videos` מריץ 2000 דורות למטריצת הדוגמה בזרע 3 ולמטריצה המעניינת בזרע 0,
+וכותב `output/videos/party_example.mp4` ו־`output/videos/party_interesting.mp4`
+(H.264, כ־55 שניות, 10 פריימים בשנייה).
 
 בלי מסך, או בלי Tkinter, `gui.py` שומר gif במקום לפתוח חלון.
 
