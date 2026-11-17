@@ -53,3 +53,14 @@ python3 gui.py --matrix example --seed 1 --stride 3 --interval 30
 
 השולחן קבוע במרכז הלוח. מיקומי האורחים בדור 0 נקבעים לפי הזרע.
 אותו זרע נותן אותה ריצה.
+
+## שאלה 1 — זיגזג
+
+התיקייה `q1_zigzag/` בונה מדרגות באורך של קו לא ידוע.
+הדוח הוא `q1_zigzag/report_q1.pdf`.
+
+```bash
+cd q1_zigzag
+python3 -m unittest test_zigzag.py
+python3 build_report.py
+```
